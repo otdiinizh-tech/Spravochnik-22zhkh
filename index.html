@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Справочник 22ЖКХ — Нижний Новгород</title>
+<meta name="description" content="Поиск дома по адресу: год постройки, этажность, управляющая организация, аварийность. Нижний Новгород.">
+<style>
+  :root { --blue:#1a5fb4; --blue-d:#1b4f9c; --bg:#f4f6fa; --card:#ffffff; --line:#e3e8f0; --text:#1d2733; --muted:#5c6b7f; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; background: var(--bg); color: var(--text); }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 0 14px 48px; }
+  header { background: linear-gradient(135deg, var(--blue), var(--blue-d)); color: #fff; padding: 26px 0 22px; box-shadow: 0 2px 10px rgba(20,60,120,.25); }
+  header .wrap { padding-bottom: 0; }
+  h1 { font-size: 22px; line-height: 1.25; }
+  .sub { margin-top: 6px; font-size: 13.5px; opacity: .92; }
+  .search { display: flex; gap: 8px; margin-top: 18px; }
+  #q { flex: 1; border: none; border-radius: 10px; padding: 14px 16px; font-size: 16px; outline: none; }
+  #btn { border: none; border-radius: 10px; padding: 0 20px; font-size: 16px; font-weight: 600; background: #ffd057; color: #4a3600; cursor: pointer; }
+  #btn:active { transform: scale(.97); }
+  .hint { margin-top: 10px; font-size: 12.5px; opacity: .85; }
+  .note { margin: 16px 0 4px; padding: 10px 14px; background: #fff7e0; border: 1px solid #f2df9e; border-radius: 10px; font-size: 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-top: 14px; box-shadow: 0 1px 4px rgba(20,50,100,.06); }
+  .addr { font-weight: 700; font-size: 16.5px; margin-bottom: 10px; }
+  .row { display: flex; gap: 10px; padding: 7px 0; border-top: 1px dashed var(--line); font-size: 14.5px; }
+  .row:first-of-type { border-top: none; }
+  .k { flex: 0 0 45%; color: var(--muted); }
+  .v { flex: 1; }
+  .list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+  .cand { text-align: left; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; font-size: 15px; cursor: pointer; color: var(--blue-d); font-weight: 600; }
+  .cand:hover { border-color: var(--blue); }
+  .empty { margin-top: 16px; padding: 14px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; font-size: 14.5px; color: var(--muted); }
+  footer { margin-top: 28px; font-size: 12px; color: var(--muted); text-align: center; line-height: 1.6; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>Справочник 22ЖКХ</h1>
+    <div class="sub">Многоквартирные дома Нижнего Новгорода: год постройки, этажность, управляющая организация, аварийность и другие сведения.</div>
+    <div class="search">
+      <input id="q" type="text" placeholder="Например: минина 11" autocomplete="off">
+      <button id="btn">Найти</button>
+    </div>
+    <div class="hint">Напишите улицу и номер дома — можно сокращённо: «ул минина 11», «наб верхне-волжская 9/1», «пер плотничный 2». Поиск понимает опечатки.</div>
+  </div>
+</header>
+<main class="wrap">
+  <div id="results"></div>
+  <footer>
+    Данные: городская таблица 22ЖКХ (1334 дома).<br>
+    Поиск работает прямо в браузере — данные не отправляются на сервер.
+  </footer>
+</main>
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
