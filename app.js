@@ -354,7 +354,107 @@
     return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
 
-  function houseCard(house) {
+  // -------------------------------------------------------------------------
+  // Каталог: фильтры, сетка карточек, детальный вид
+  // -------------------------------------------------------------------------
+  const PAGE = 60;
+  const state = { list: [], shown: 0, mode: null, note: "" };
+
+  const HOUSE_ICON = '<svg viewBox="0 0 24 24" class="hicon" aria-hidden="true"><path d="M12 3 2.5 11h2.6v9.5h5.4V15h3.2v5.5h5.4V11h2.6L12 3z"/></svg>';
+
+  function currentFilters() {
+    return {
+      district: document.getElementById("fDistrict").value,
+      uk: normalizeText(document.getElementById("fUk").value)
+    };
+  }
+
+  function applyFilters(list) {
+    const f = currentFilters();
+    return list.filter(function (h) {
+      if (f.district && (h.data["Район"] || "").trim() !== f.district) return false;
+      if (f.uk) {
+        const ukText = normalizeText((h.data["Управляющая организация"] || "") + " " +
+                                     (h.data["ТСЖ/ЖСК/ТСН"] || ""));
+        if (ukText.indexOf(f.uk) < 0) return false;
+      }
+      return true;
+    });
+  }
+
+  function populateFilters() {
+    const districts = {}, uks = {};
+    global.HOUSES.forEach(function (h) {
+      const d = (h.data["Район"] || "").trim();
+      if (d) districts[d] = true;
+      const u = (h.data["Управляющая организация"] || "").trim();
+      if (u && SKIP_VALUES.indexOf(u.toLowerCase()) < 0) uks[u] = true;
+    });
+    const byRu = function (a, b) { return a.localeCompare(b, "ru"); };
+    const sel = document.getElementById("fDistrict");
+    Object.keys(districts).sort(byRu).forEach(function (d) {
+      const o = document.createElement("option");
+      o.value = d; o.textContent = d;
+      sel.appendChild(o);
+    });
+    const dl = document.getElementById("ukList");
+    Object.keys(uks).sort(byRu).forEach(function (u) {
+      const o = document.createElement("option");
+      o.value = u;
+      dl.appendChild(o);
+    });
+  }
+
+  function houseCard(h, i) {
+    const district = (h.data["Район"] || "").trim();
+    const uk = fieldValue(h, "Управляющая организация") || fieldValue(h, "ТСЖ/ЖСК/ТСН") || "";
+    const year = fieldValue(h, "Год постройки");
+    return '<button type="button" class="card-h" data-i="' + i + '">' + HOUSE_ICON +
+      '<div style="min-width:0">' +
+      '<div class="addr">' + esc(h.address.trim()) + '</div>' +
+      '<div class="meta">' +
+      (district ? 'Район: <b>' + esc(district) + '</b><br>' : '') +
+      (uk ? 'УК: <b>' + esc(uk) + '</b>' : '') +
+      '</div>' +
+      (year ? '<span class="year">год постройки · ' + esc(year) + '</span>' : '') +
+      '</div></button>';
+  }
+
+  function renderList() {
+    const out = document.getElementById("results");
+    const list = state.list;
+    state.detailOf = null;
+    if (!list.length) {
+      out.innerHTML = '<div class="empty">Ничего не найдено. Попробуйте изменить запрос или фильтры.</div>';
+      return;
+    }
+    let html = "";
+    if (state.note) html += '<div class="note">' + esc(state.note) + '</div>';
+    html += '<div class="count">Найдено: ' + list.length + (list.length === 1 ? " дом" : " домов") +
+            (state.mode === "browse" ? " · по фильтрам" : "") + "</div>";
+    html += '<div class="grid">' +
+      list.slice(0, state.shown).map(function (h, i) { return houseCard(h, i); }).join("") + "</div>";
+    if (state.shown < list.length) {
+      const left = list.length - state.shown;
+      html += '<button type="button" class="more-btn">Показать ещё ' + Math.min(PAGE, left) +
+              " из " + left + "</button>";
+    }
+    out.innerHTML = html;
+    out.querySelectorAll(".card-h").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        showDetail(list[Number(btn.getAttribute("data-i"))]);
+      });
+    });
+    const more = out.querySelector(".more-btn");
+    if (more) {
+      more.addEventListener("click", function () {
+        state.shown += PAGE;
+        renderList();
+      });
+    }
+  }
+
+  function detailCard(house) {
     const rows = [];
     Object.keys(house.data).forEach(function (field) {
       const value = String(house.data[field]).trim();
@@ -363,16 +463,37 @@
       }
     });
     const text = spravkaText(house);
-    return '<div class="card"><div class="addr">&#127968; ' + esc(house.address.trim()) + '</div>' + rows.join("") +
+    return '<button type="button" class="back" id="backBtn">&#8592; Назад к списку</button>' +
+      '<div class="detail">' +
+      '<div class="addr">' + esc(house.address.trim()) + '</div>' +
+      '<div class="rows">' + rows.join("") + '</div>' +
       '<div class="spravka-title">Текст для справки (можно скопировать)</div>' +
       '<textarea class="spravka" readonly>' + esc(text) + '</textarea>' +
-      '<button class="copy-btn" type="button">Скопировать текст</button></div>';
+      '<div class="btn-row"><button class="copy-btn" type="button">Скопировать текст</button></div>' +
+      '<div class="map-box"><iframe id="mapframe" title="Карта: ' + esc(house.address.trim()) + '" allowfullscreen></iframe>' +
+      '<div class="map-cap">Интерактивная карта — её можно двигать и приближать. Подгружается с Яндекса.</div></div>' +
+      '</div>';
+  }
+
+  function showDetail(house) {
+    const out = document.getElementById("results");
+    out.innerHTML = detailCard(house);
+    bindCopyButtons(out);
+    document.getElementById("backBtn").addEventListener("click", function () {
+      renderList();
+      document.getElementById("poisk").scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    const frame = document.getElementById("mapframe");
+    if (frame) {
+      frame.src = "https://yandex.ru/map-widget/v1/?text=" + encodeURIComponent(house.address.trim()) + "&z=17";
+    }
+    out.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   function bindCopyButtons(root) {
     root.querySelectorAll(".copy-btn").forEach(function (btn) {
       btn.addEventListener("click", function () {
-        const card = btn.closest(".card");
+        const card = btn.closest(".detail");
         const ta = card ? card.querySelector(".spravka") : null;
         if (!ta) return;
         const done = function () {
@@ -388,53 +509,48 @@
     });
   }
 
-  function render(result) {
-    const out = document.getElementById("results");
-    let html = "";
-    if (result.note) html += '<div class="note">' + esc(result.note) + '</div>';
-    if (result.status === "none") {
-      html += '<div class="empty">Ничего не найдено. Попробуйте написать улицу и номер дома, например: <b>минина 11</b></div>';
-    } else if (result.status === "candidates") {
-      html += '<div class="note">Точного совпадения нет. Похожие адреса:</div><div class="list">' +
-        result.houses.map(function (h, i) {
-          return '<button class="cand" data-i="' + i + '">' + esc(h.address.trim()) + '</button>';
-        }).join("") + '</div>';
-      out.innerHTML = html;
-      out.querySelectorAll(".cand").forEach(function (btn) {
-        btn.addEventListener("click", function () {
-          const h = result.houses[Number(btn.getAttribute("data-i"))];
-          const res = document.getElementById("results");
-          res.innerHTML = houseCard(h);
-          bindCopyButtons(res);
-          document.getElementById("q").value = h.address;
-        });
-      });
-      return;
-    } else {
-      html += result.houses.map(houseCard).join("");
-    }
-    out.innerHTML = html;
-    bindCopyButtons(out);
-  }
-
-  function runSearch() {
+  function runSearch(scroll) {
     const q = document.getElementById("q").value;
     const out = document.getElementById("results");
-    if (!q.trim()) { out.innerHTML = ""; return; }
     const parsed = parseAddress(q);
-    if (!parsed) {
+    if (parsed) {
+      const res = search(global.HOUSES, parsed);
+      state.mode = "search";
+      state.note = res.status === "candidates" ? "Точного совпадения нет. Похожие адреса:" : res.note;
+      state.list = applyFilters(res.houses);
+    } else if (!q.trim()) {
+      const f = currentFilters();
+      if (!f.district && !f.uk) {
+        out.innerHTML = '<div class="empty">Введите улицу и номер дома — например, <b>минина 11</b>, — или выберите район / управляющую компанию выше.</div>';
+        return;
+      }
+      state.mode = "browse";
+      state.note = "";
+      const all = global.HOUSES.slice().sort(function (a, b) { return a.address.localeCompare(b.address, "ru"); });
+      state.list = applyFilters(all);
+    } else {
       out.innerHTML = '<div class="empty">Не понял адрес. Напишите улицу и номер дома, например: <b>минина 11</b>, <b>верхне-волжская 9/1</b></div>';
       return;
     }
-    render(search(global.HOUSES, parsed));
+    state.shown = Math.min(PAGE, state.list.length);
+    renderList();
+    if (scroll) {
+      document.getElementById("poisk").scrollIntoView({ behavior: "smooth", block: "start" });
+    }
   }
 
   function initUI() {
-    document.getElementById("btn").addEventListener("click", runSearch);
+    populateFilters();
+    document.getElementById("btn").addEventListener("click", function () { runSearch(true); });
     document.getElementById("q").addEventListener("keydown", function (e) {
-      if (e.key === "Enter") runSearch();
+      if (e.key === "Enter") runSearch(true);
     });
-    document.getElementById("q").focus();
+    document.getElementById("fDistrict").addEventListener("change", function () { runSearch(false); });
+    let t = null;
+    document.getElementById("fUk").addEventListener("input", function () {
+      clearTimeout(t);
+      t = setTimeout(function () { runSearch(false); }, 350);
+    });
   }
 
   // Экспорт для тестов (Node) и для страницы
