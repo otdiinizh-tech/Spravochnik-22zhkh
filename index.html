@@ -30,6 +30,10 @@
   .cand { text-align: left; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; font-size: 15px; cursor: pointer; color: var(--blue-d); font-weight: 600; }
   .cand:hover { border-color: var(--blue); }
   .empty { margin-top: 16px; padding: 14px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; font-size: 14.5px; color: var(--muted); }
+  .spravka-title { margin-top: 14px; padding-top: 12px; border-top: 2px solid var(--line); font-size: 13px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
+  .spravka { display: block; width: 100%; margin-top: 8px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: #f8fafd; font: 14px/1.6 inherit; font-family: inherit; color: var(--text); resize: vertical; min-height: 110px; }
+  .copy-btn { margin-top: 8px; border: none; border-radius: 10px; padding: 11px 18px; font-size: 14.5px; font-weight: 600; background: var(--blue); color: #fff; cursor: pointer; }
+  .copy-btn:active { transform: scale(.97); }
   footer { margin-top: 28px; font-size: 12px; color: var(--muted); text-align: center; line-height: 1.6; }
 </style>
 </head>
@@ -37,7 +41,7 @@
 <header>
   <div class="wrap">
     <h1>Справочник 22ЖКХ</h1>
-    <div class="sub">Многоквартирные дома Нижнего Новгорода: год постройки, этажность, управляющая организация, аварийность и другие сведения.</div>
+    <div class="sub">Многоквартирные дома Нижнего Новгорода и области: год постройки, этажность, управляющая организация, аварийность, готовый текст для справки.</div>
     <div class="search">
       <input id="q" type="text" placeholder="Например: минина 11" autocomplete="off">
       <button id="btn">Найти</button>
@@ -48,7 +52,7 @@
 <main class="wrap">
   <div id="results"></div>
   <footer>
-    Данные: городская таблица 22ЖКХ (1334 дома).<br>
+    Данные: таблица 22ЖКХ (10 855 домов).<br>
     Поиск работает прямо в браузере — данные не отправляются на сервер.
   </footer>
 </main>

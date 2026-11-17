@@ -38,6 +38,8 @@
   const HOUSE_RE = /^(\d{1,4})([а-я]{0,2})(?:\s*\/\s*(\d{1,3}[а-я]{0,2}))?$/;
   const GLUED_HOUSE_RE = /^д(?:ом)?\s*(\d{1,4})([а-я]{0,2})(?:\s*\/\s*(\d{1,3}[а-я]{0,2}))?$/;
   const GLUED_CORPUS_RE = /^к\s*\.?\s*(\d{1,3})$/;
+  const GLUED_HOUSE_CORPUS_RE = /^(\d{1,4})к(\d{1,3})$/;   // «4к1» = дом 4, корпус 1
+  const VERBATIM_HOUSE_RE = /^[\d+\-\/а-я]{1,14}$/;        // «41-43», «50/40+50»
 
   function makeSet(arr) {
     const o = {};
@@ -89,9 +91,19 @@
         i++;
         continue;
       }
+      const hc = t.match(GLUED_HOUSE_CORPUS_RE);
+      if (hc && !house) {
+        house = hc[1];
+        if (!corpus) corpus = hc[2];
+        continue;
+      }
       const m = t.match(HOUSE_RE) || t.match(GLUED_HOUSE_RE);
       if (m && !house) {
         house = m[1] + (m[2] || "") + (m[3] ? "/" + m[3] : "");
+        continue;
+      }
+      if (!house && VERBATIM_HOUSE_RE.test(t) && /\d/.test(t)) {
+        house = t;   // диапазоны и составные номера: «41-43», «50/40+50»
         continue;
       }
       if (HOUSE_RE.test(t) && house && !corpus) {
@@ -179,14 +191,39 @@
   }
 
   function houseMatches(query, h) {
-    if (query.house !== h.house) return false;
+    const qh = query.house;
+    const hh = h.house || "";
+    let ok = false;
+    if (hh.indexOf("+") >= 0) {
+      // «50/40+50» — любая из частей
+      ok = hh.split("+").some(function (part) { return part === qh; });
+    } else if (hh.indexOf("-") >= 0) {
+      // «41-43», «25-27/1» — номер внутри диапазона
+      const range = hh.match(/^(\d{1,4})-(\d{1,4})/);
+      const qn = qh.match(/^(\d{1,4})/);
+      if (range && qn) {
+        const q = parseInt(qn[1], 10);
+        ok = q >= parseInt(range[1], 10) && q <= parseInt(range[2], 10);
+      } else {
+        ok = hh === qh;
+      }
+    } else {
+      ok = hh === qh;
+    }
+    if (!ok) return false;
     if (query.corpus) return h.corpus === query.corpus;
     return true;
   }
 
   function streetExact(query, h) {
-    return queryKey(query, "full") === h.fullKey ||
-           (queryKey(query, "name") && queryKey(query, "name") === h.nameKey);
+    if (queryKey(query, "full") === h.fullKey) return true;
+    const qn = queryKey(query, "name");
+    if (!qn) return false;
+    if (qn === h.nameKey) return true;
+    // часть названия: «пешкова» = «пешкова алеши», «изумрудная» = «культура изумрудная»
+    const qt = qn.split(" "), ht = h.nameKey.split(" ");
+    const subset = function (a, b) { return a.every(function (x) { return b.indexOf(x) >= 0; }); };
+    return subset(qt, ht) || subset(ht, qt);
   }
 
   function search(houses, query) {
@@ -243,6 +280,76 @@
   // -------------------------------------------------------------------------
   const SKIP_VALUES = ["nan", "нет", "none", "0", "-"];
 
+  // «19273.17» -> «19 273,17»
+  function formatNum(v) {
+    const s = String(v).trim();
+    if (!/^-?\d+(\.\d+)?$/.test(s)) return s;
+    const neg = s[0] === "-";
+    const parts = (neg ? s.slice(1) : s).split(".");
+    const intPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+    return (neg ? "-" : "") + intPart + (parts[1] ? "," + parts[1] : "");
+  }
+
+  function fieldValue(house, name, fmt) {
+    let v = house.data[name];
+    if (v === undefined || v === null) return "";
+    v = String(v).trim();
+    if (!v || SKIP_VALUES.indexOf(v.toLowerCase()) >= 0) return "";
+    return fmt ? formatNum(v) : v;
+  }
+
+  // Связный текст для вставки в справку
+  function spravkaText(house) {
+    const d = house.data || {};
+    const sents = [];
+
+    let addr = house.address.trim().replace(/\s+/g, " ");
+    let district = fieldValue(house, "Район");
+    if (district && district.indexOf("сельсовет") < 0 && district.indexOf("район") < 0) {
+      district += " район";
+    }
+    sents.push("Многоквартирный дом, расположенный по адресу: " + addr +
+               (district ? " (" + district + ")" : "") + ".");
+
+    const chars = [];
+    const year = fieldValue(house, "Год постройки");
+    if (year) chars.push("год постройки — " + year);
+    const floors = fieldValue(house, "Этажность");
+    if (floors) chars.push("этажность — " + floors);
+    const entrances = fieldValue(house, "Подъездов");
+    if (entrances) chars.push("количество подъездов — " + entrances);
+    const flats = fieldValue(house, "Квартир");
+    if (flats) chars.push("количество квартир — " + flats);
+    if (chars.length) sents.push("Характеристики МКД: " + chars.join(", ") + ".");
+
+    const area = fieldValue(house, "Общая площадь, м²", true);
+    const living = fieldValue(house, "Жилая площадь, м²", true);
+    const municip = fieldValue(house, "Площадь в муниципальной собственности, м²", true);
+    if (area) {
+      let t = "Общая площадь помещений составляет " + area + " м²";
+      if (living) t += ", в том числе жилых помещений — " + living + " м²";
+      sents.push(t + ".");
+    }
+    if (municip) sents.push("Площадь помещений в муниципальной собственности — " + municip + " м².");
+
+    const cat = fieldValue(house, "Категория благоустройства");
+    if (cat) sents.push("Категория МКД по степени благоустройства — " + cat + ".");
+    const way = fieldValue(house, "Способ управления");
+    if (way) sents.push("Способ управления — " + way + ".");
+    const uo = fieldValue(house, "Управляющая организация");
+    if (uo) sents.push("Управляющая организация — " + uo + ".");
+    const tszh = fieldValue(house, "ТСЖ/ЖСК/ТСН");
+    if (tszh) sents.push("ТСЖ/ЖСК/ТСН — " + tszh + ".");
+    const emergency = fieldValue(house, "Признание аварийным (реквизиты НПА)");
+    if (emergency) sents.push("Признание аварийным (реквизиты НПА) — " + emergency + ".");
+    const base = fieldValue(house, "Основание назначения");
+    if (base) sents.push("Основание назначения — " + base + ".");
+    const comment = fieldValue(house, "Комментарий");
+    if (comment) sents.push("Комментарий: " + comment + ".");
+
+    return sents.join(" ");
+  }
+
   function esc(s) {
     return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
@@ -255,7 +362,30 @@
         rows.push('<div class="row"><div class="k">' + esc(field) + '</div><div class="v">' + esc(value) + '</div></div>');
       }
     });
-    return '<div class="card"><div class="addr">&#127968; ' + esc(house.address.trim()) + '</div>' + rows.join("") + '</div>';
+    const text = spravkaText(house);
+    return '<div class="card"><div class="addr">&#127968; ' + esc(house.address.trim()) + '</div>' + rows.join("") +
+      '<div class="spravka-title">Текст для справки (можно скопировать)</div>' +
+      '<textarea class="spravka" readonly>' + esc(text) + '</textarea>' +
+      '<button class="copy-btn" type="button">Скопировать текст</button></div>';
+  }
+
+  function bindCopyButtons(root) {
+    root.querySelectorAll(".copy-btn").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        const card = btn.closest(".card");
+        const ta = card ? card.querySelector(".spravka") : null;
+        if (!ta) return;
+        const done = function () {
+          btn.textContent = "Скопировано!";
+          setTimeout(function () { btn.textContent = "Скопировать текст"; }, 1500);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(ta.value).then(done, function () { ta.select(); document.execCommand("copy"); done(); });
+        } else {
+          ta.select(); document.execCommand("copy"); done();
+        }
+      });
+    });
   }
 
   function render(result) {
@@ -273,7 +403,9 @@
       out.querySelectorAll(".cand").forEach(function (btn) {
         btn.addEventListener("click", function () {
           const h = result.houses[Number(btn.getAttribute("data-i"))];
-          document.getElementById("results").innerHTML = houseCard(h);
+          const res = document.getElementById("results");
+          res.innerHTML = houseCard(h);
+          bindCopyButtons(res);
           document.getElementById("q").value = h.address;
         });
       });
@@ -282,6 +414,7 @@
       html += result.houses.map(houseCard).join("");
     }
     out.innerHTML = html;
+    bindCopyButtons(out);
   }
 
   function runSearch() {
@@ -307,6 +440,7 @@
   // Экспорт для тестов (Node) и для страницы
   const api = { parseAddress: parseAddress, search: search, similarity: similarity,
                 normalizeText: normalizeText, sortedKey: sortedKey, makeSet: makeSet,
+                spravkaText: spravkaText, formatNum: formatNum,
                 STREET_TYPES: STREET_TYPES, PLACE_TYPES: PLACE_TYPES };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   global.ZhkhSearch = api;
